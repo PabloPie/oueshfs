@@ -102,6 +102,7 @@ struct rbt_node {
 };
 extern int hb_insert(struct rbt_node *data);
 extern struct rbt_node* hb_search(struct hash_sha256* hash);
+extern void hb_free(void);
 
 /* dedup functions */
 void dedup_umount(struct super_block* sb);

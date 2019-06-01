@@ -24,7 +24,7 @@ struct dentry *ouichefs_mount(struct file_system_type *fs_type, int flags,
 	dentry = mount_bdev(fs_type, flags, dev_name, data,
 			    ouichefs_fill_super);
 	if (IS_ERR(dentry))
-		pr_err("'%s' mount failure (err : %d)\n", dev_name, IS_ERR_VALUE(dentry));
+		pr_err("'%s' mount failure (err : %ld)\n", dev_name, IS_ERR_VALUE(dentry));
 	else
 		pr_info("'%s' mount success\n", dev_name);
 
@@ -37,8 +37,10 @@ struct dentry *ouichefs_mount(struct file_system_type *fs_type, int flags,
 void ouichefs_kill_sb(struct super_block *sb)
 {
 	// do not dedup if there was an error on mount
-	if(!IS_ERR(sb->s_bdev))
+	if(!IS_ERR(sb->s_bdev)) {
 		dedup_umount(sb);
+		hb_free();
+	}
 	else
 		pr_info("No dedup\n");
 

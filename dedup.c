@@ -7,22 +7,6 @@
 #include "ouichefs.h"
 #include "bitmap.h"
 
-/*void dedup_umount(struct super_block* sb) {
-	unsigned int bit;
-	struct ouichefs_sb_info* sb_info;
-	
-	sb_info = (struct ouichefs_sb_info*)OUICHEFS_SB(sb);
-	for_each_clear_bit(bit, sb_info->ifree_bitmap, sb_info->nr_inodes) {
-		struct inode* in = ouichefs_iget(sb, bit);
-		struct ouichefs_inode_info* inode_info = (struct ouichefs_inode_info*)OUICHEFS_INODE(in);
-		pr_info("Inode: %d, index_block: %d", bit, inode_info->index_block);
-		
-		
-		
-		iput(in);
-	}
-}*/
-
 void dedup_umount(struct super_block* sb) {
 	unsigned int bit;
 	struct ouichefs_sb_info* sb_info;
@@ -68,21 +52,24 @@ void dedup_umount(struct super_block* sb) {
 
 		for(i=0; i < file_inode->i_blocks-1 ; i++) {
 			
+			if(index->blocks[i]==0) {
+				continue;
+			}
+			
 			bh_block = sb_bread(sb, index->blocks[i]);
 			if (IS_ERR(bh_block)) {
 				pr_info("[dedup] Error reading block %d.\n", index->blocks[i]);
 				continue;
 			}
 			
-			if(index->blocks[i]==0) {
-				continue;
-			}
+			
 			
 			// Compute block's hash
 			tree_node_new = kmalloc(sizeof(struct rbt_node), GFP_KERNEL);
 			if(!tree_node_new) {
 				pr_info("[dedup] No memory\n");
-				return; // à revoir
+				brelse(bh_block);// à revoir
+				return;
 			}
 			
 			tree_node_new->blockid = index->blocks[i];
@@ -94,11 +81,22 @@ void dedup_umount(struct super_block* sb) {
 			
 			tree_node_found = hb_search(&tree_node_new->hash);
 			if(tree_node_found) {
-				pr_info("[dedup] bloc trouve %d\n", tree_node_found->blockid);
+				if(tree_node_found->blockid == tree_node_new->blockid){
+					goto relse_blk;
+				}
+
+				pr_info("[dedup] bloc found %d new=%d\n", tree_node_found->blockid, tree_node_new->blockid);
+				kfree(tree_node_new);
+				put_block(sb_info,index->blocks[i]);
+				index->blocks[i] = tree_node_found->blockid;
+				pr_info("[] maj %d",index->blocks[i]);
+				mark_buffer_dirty(bh_index);
 			} else {
 				hb_insert(tree_node_new);
-				pr_info("[dedup] bloc ajoute %d\n", tree_node_new->blockid);
+				pr_info("[dedup] bloc added %d\n", tree_node_new->blockid);
 			}
+			relse_blk:
+			brelse(bh_block);
 		}
 
 		brelse(bh_index);

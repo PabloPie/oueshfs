@@ -3,6 +3,7 @@
 #include <linux/err.h>
 #include <linux/scatterlist.h>
 #include <linux/rbtree.h>
+#include <linux/slab.h>
 #include "ouichefs.h"
 
 static struct rb_root rbtree = RB_ROOT;
@@ -51,4 +52,14 @@ int hb_insert(struct rbt_node *data)
 	rb_link_node(&data->node, parent, new);
 	rb_insert_color(&data->node, &rbtree);
 	return 1;
+}
+
+void hb_free(void)
+{
+	struct rbt_node* pos;
+	struct rbt_node* n;
+	rbtree_postorder_for_each_entry_safe(pos, n, &rbtree, node) {
+		kfree(pos);
+	}
+	rbtree = RB_ROOT;
 }
