@@ -16,7 +16,6 @@
 #define OUICHEFS_FILENAME_LEN            28
 #define OUICHEFS_MAX_SUBFILES           128
 
-
 /*
  * CowFS partition layout
  *
@@ -84,6 +83,28 @@ struct ouichefs_dir_block {
 		char filename[OUICHEFS_FILENAME_LEN];
 	} files[OUICHEFS_MAX_SUBFILES];
 };
+
+/* hash functions */
+struct hash_sha256 {
+	u32 p[8];
+};
+extern int hash_init(void);
+extern void hash_exit(void);
+extern int hash_compute_sha256(const char *data, unsigned int datalen, struct hash_sha256* hash);
+extern int hash_sha256_cmp(struct hash_sha256* h1, struct hash_sha256* h2);
+extern void hash_sha256_to_string(unsigned char* dest, struct hash_sha256* hash, unsigned hsize);
+
+/* black red tree */
+struct rbt_node {
+      struct rb_node node;
+      struct hash_sha256 hash;
+      u32 blockid;
+};
+extern int hb_insert(struct rbt_node *data);
+extern struct rbt_node* hb_search(struct hash_sha256* hash);
+
+/* dedup functions */
+void dedup_umount(struct super_block* sb);
 
 /* superblock functions */
 int ouichefs_fill_super(struct super_block *sb, void *data, int silent);

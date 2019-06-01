@@ -24,7 +24,7 @@ struct dentry *ouichefs_mount(struct file_system_type *fs_type, int flags,
 	dentry = mount_bdev(fs_type, flags, dev_name, data,
 			    ouichefs_fill_super);
 	if (IS_ERR(dentry))
-		pr_err("'%s' mount failure\n", dev_name);
+		pr_err("'%s' mount failure (err : %d)\n", dev_name, IS_ERR_VALUE(dentry));
 	else
 		pr_info("'%s' mount success\n", dev_name);
 
@@ -36,6 +36,12 @@ struct dentry *ouichefs_mount(struct file_system_type *fs_type, int flags,
  */
 void ouichefs_kill_sb(struct super_block *sb)
 {
+	// do not dedup if there was an error on mount
+	if(!IS_ERR(sb->s_bdev))
+		dedup_umount(sb);
+	else
+		pr_info("No dedup\n");
+
 	kill_block_super(sb);
 
 	pr_info("unmounted disk\n");
@@ -59,6 +65,12 @@ static int __init ouichefs_init(void)
 		pr_err("inode cache creation failed\n");
 		goto end;
 	}
+	
+	ret = hash_init();
+	if (ret) {
+		pr_err("hash api initialization failed\n");
+		goto end;
+	}
 
 	ret = register_filesystem(&ouichefs_file_system_type);
 	if (ret) {
@@ -80,6 +92,8 @@ static void __exit ouichefs_exit(void)
 		pr_err("unregister_filesystem() failed\n");
 
 	ouichefs_destroy_inode_cache();
+	
+	hash_exit();
 
 	pr_info("module unloaded\n");
 }
