@@ -28,7 +28,7 @@ void dedup_umount(struct super_block* sb) {
 		pr_warn("[ouichefs] Error on tree creation, dedup aborted !\n");
 		return;	
 	}
-	*tree = RB_ROOT;	
+	*tree = RB_ROOT;
 	
 	if (!sb || IS_ERR(sb)) {
 		pr_info("Superblock not found ! Dedup cancelled\n");
@@ -63,7 +63,7 @@ void dedup_umount(struct super_block* sb) {
 
 		index = (struct ouichefs_file_index_block *)bh_index->b_data;
 
-		for(i=0; i < file_inode->i_blocks ; i++) {
+		for(i=0; i < file_inode->i_blocks-1  ; i++) {
 			
 			if(index->blocks[i]==0) {
 				continue;
@@ -89,6 +89,7 @@ void dedup_umount(struct super_block* sb) {
 			hash_compute(bh_block->b_data, OUICHEFS_BLOCK_SIZE, &tree_node_new->hash);
 
 			tree_node_found = hb_search(tree, &tree_node_new->hash);
+
 			if(tree_node_found) {
 				if(tree_node_found->blockid == tree_node_new->blockid){
 					goto relse_blk;
@@ -97,9 +98,11 @@ void dedup_umount(struct super_block* sb) {
 				index->blocks[i] = tree_node_found->blockid;
 				mark_buffer_dirty(bh_index);
 
-				//sb_info->bref_count[tree_node_found->blockid] = ((u8)(sb_info->bref_count[tree_node_found->blockid]))+1;
+				// Increase reference count for the found block
+				sb_info->b_refcount[tree_node_found->blockid] = sb_info->b_refcount[tree_node_found->blockid]+1;
 
-				pr_info("[ouichefs] bloc dedup old=%d new=%d\n", tree_node_found->blockid, tree_node_new->blockid);
+				pr_info("[ouichefs] bloc deduped: old=%d new=%d, refs=%d\n", 
+					tree_node_found->blockid, tree_node_new->blockid, sb_info->b_refcount[tree_node_found->blockid]);
 				kfree(tree_node_new);
 			} else {
 				hb_insert(tree, tree_node_new);
@@ -109,7 +112,7 @@ void dedup_umount(struct super_block* sb) {
 		relse_blk:
 			brelse(bh_block);
 		}
-
+		//hb_free(&hash_tree_root);
 		brelse(bh_index);
 		iput(file_inode);
 	}

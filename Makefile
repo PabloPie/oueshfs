@@ -1,7 +1,7 @@
 obj-m += ouichefs.o
 ouichefs-objs := super.o inode.o file.o dir.o hash.o rbthash.o fs.o dedup.o 
 
-KERNELDIR ?= /lib/modules/$(shell uname -r)/build
+KERNELDIR ?= ~/sorbonne/tp-pnl/linux-4.19.3/
 
 all:
 	make -C $(KERNELDIR) M=$(PWD) modules

@@ -37,9 +37,8 @@ struct dentry *ouichefs_mount(struct file_system_type *fs_type, int flags,
 void ouichefs_kill_sb(struct super_block *sb)
 {
 	// do not dedup if there was an error on mount
-	if(!IS_ERR(sb->s_bdev)) {
+	if(!IS_ERR(sb->s_bdev))
 		dedup_umount(sb);
-	}
 	else
 		pr_info("No dedup\n");
 

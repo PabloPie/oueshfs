@@ -47,7 +47,9 @@ struct ouichefs_superblock {
 	uint32_t nr_free_inodes;  /* Number of free inodes */
 	uint32_t nr_free_blocks;  /* Number of free blocks */
 
-	char padding[4064];       /* Padding to match block size */
+	uint32_t nr_refcount_blocks; /* Number of refcount blocks */
+
+	char padding[4060];       /* Padding to match block size */
 };
 
 struct ouichefs_file_index_block {
@@ -83,7 +85,7 @@ static struct ouichefs_superblock *write_superblock(int fd, struct stat *fstats)
 	int ret;
 	struct ouichefs_superblock *sb;
 	uint32_t nr_inodes = 0, nr_blocks = 0, nr_ifree_blocks = 0;
-	uint32_t nr_bfree_blocks = 0, nr_data_blocks = 0, nr_istore_blocks = 0;
+	uint32_t nr_bfree_blocks = 0, nr_data_blocks = 0, nr_istore_blocks = 0, nr_refcount_blocks = 0;
 	uint32_t mod;
 
 	sb = malloc(sizeof(struct ouichefs_superblock));
@@ -98,7 +100,10 @@ static struct ouichefs_superblock *write_superblock(int fd, struct stat *fstats)
 	nr_istore_blocks = idiv_ceil(nr_inodes, OUICHEFS_INODES_PER_BLOCK);
 	nr_ifree_blocks = idiv_ceil(nr_inodes, OUICHEFS_BLOCK_SIZE * 8);
 	nr_bfree_blocks = idiv_ceil(nr_blocks, OUICHEFS_BLOCK_SIZE * 8);
-	nr_data_blocks = nr_blocks - 1 - nr_istore_blocks - nr_ifree_blocks - nr_bfree_blocks;
+
+	nr_refcount_blocks = idiv_ceil(nr_blocks, OUICHEFS_BLOCK_SIZE * 8);
+
+	nr_data_blocks = nr_blocks - 1 - nr_istore_blocks - nr_ifree_blocks - nr_bfree_blocks - nr_refcount_blocks;
 
 	memset(sb, 0, sizeof(struct ouichefs_superblock));
 	sb->magic = htole32(OUICHEFS_MAGIC);
@@ -109,6 +114,8 @@ static struct ouichefs_superblock *write_superblock(int fd, struct stat *fstats)
 	sb->nr_bfree_blocks = htole32(nr_bfree_blocks);
 	sb->nr_free_inodes = htole32(nr_inodes - 1);
 	sb->nr_free_blocks = htole32(nr_data_blocks - 1);
+
+	sb->nr_refcount_blocks = htole32(nr_refcount_blocks);
 
 	ret = write(fd, sb, sizeof(struct ouichefs_superblock));
 	if (ret != sizeof(struct ouichefs_superblock)) {
@@ -123,11 +130,12 @@ static struct ouichefs_superblock *write_superblock(int fd, struct stat *fstats)
 	       "\tnr_ifree_blocks=%u\n"
 	       "\tnr_bfree_blocks=%u\n"
 	       "\tnr_free_inodes=%u\n"
-	       "\tnr_free_blocks=%u\n",
+	       "\tnr_free_blocks=%u\n"
+	       "\tnr_refcount_blocks=%u\n",
 	       sizeof(struct ouichefs_superblock),
 	       sb->magic, sb->nr_blocks, sb->nr_inodes, sb->nr_istore_blocks,
 	       sb->nr_ifree_blocks, sb->nr_bfree_blocks, sb->nr_free_inodes,
-	       sb->nr_free_blocks);
+	       sb->nr_free_blocks,sb->nr_refcount_blocks);
 
 	return sb;
 }
@@ -287,6 +295,64 @@ end:
 	return ret;
 }
 
+// No need to write ones anyway
+static int write_brefcount_blocks(int fd, struct ouichefs_superblock *sb)
+{
+	int ret = 0;
+	uint32_t i;
+	char *block;
+	uint64_t *bref, mask, line;
+	uint32_t nr_used = le32toh(sb->nr_istore_blocks) +
+		le32toh(sb->nr_ifree_blocks) +
+		le32toh(sb->nr_bfree_blocks) + 
+		le32toh(sb->nr_refcount_blocks) + 3;
+
+	block = malloc(OUICHEFS_BLOCK_SIZE);
+	if (!block)
+		return -1;
+	bref = (uint64_t *)block;
+
+	/*
+	 * First blocks (incl. sb + istore + ifree + bref + 1 used block)
+	 * we suppose it won't go further than the first block
+	 */
+	memset(bref, 0xff, OUICHEFS_BLOCK_SIZE);
+	i = 0;
+	while (nr_used) {
+		line = 0xffffffffffffffff;
+		for (mask = 0x1; mask != 0x0; mask <<= 1) {
+			line &= ~mask;
+			nr_used--;
+			if (!nr_used)
+				break;
+		}
+		bref[i] = htole64(line);
+		i++;
+	}
+	ret = write(fd, bref, OUICHEFS_BLOCK_SIZE);
+	if (ret != OUICHEFS_BLOCK_SIZE) {
+		ret = -1;
+		goto end;
+	}
+
+	/* other blocks */
+	memset(bref, 0x00, OUICHEFS_BLOCK_SIZE);
+	for (i = 1; i < le32toh(sb->nr_refcount_blocks); i++) {
+		ret = write(fd, bref, OUICHEFS_BLOCK_SIZE);
+		if (ret != OUICHEFS_BLOCK_SIZE) {
+			ret = -1;
+			goto end;
+		}
+	}
+	ret = 0;
+
+	printf("Brefcount blocks: wrote %d blocks\n", i);
+end:
+	free(block);
+
+	return ret;
+}
+
 static int write_data_blocks(int fd, struct ouichefs_superblock *sb)
 {
 	int ret = 0;
@@ -376,6 +442,14 @@ int main(int argc, char **argv)
 		ret = EXIT_FAILURE;
 		goto free_sb;
 	}
+
+	/* Write block bfree blocks */
+	// ret = write_brefcount_blocks(fd, sb);
+	// if (ret != 0) {
+	// 	perror("write_bfree_blocks()");
+	// 	ret = EXIT_FAILURE;
+	// 	goto free_sb;
+	// }
 
 	/* Write data blocks */
 	ret = write_data_blocks(fd, sb);

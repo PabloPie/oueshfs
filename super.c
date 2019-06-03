@@ -100,6 +100,7 @@ static void ouichefs_put_super(struct super_block *sb)
 	if (sbi) {
 		kfree(sbi->ifree_bitmap);
 		kfree(sbi->bfree_bitmap);
+		kfree(sbi->b_refcount);
 		kfree(sbi);
 	}
 }
@@ -124,6 +125,7 @@ static int ouichefs_sync_fs(struct super_block *sb, int wait)
 	disk_sb->nr_bfree_blocks  = sbi->nr_bfree_blocks;
 	disk_sb->nr_free_inodes   = sbi->nr_free_inodes;
 	disk_sb->nr_free_blocks   = sbi->nr_free_blocks;
+	disk_sb->nr_refcount_blocks = sbi->nr_refcount_blocks;
 
 	mark_buffer_dirty(bh);
 	if (wait)
@@ -159,6 +161,25 @@ static int ouichefs_sync_fs(struct super_block *sb, int wait)
 		memcpy(bh->b_data,
 		       (void *)sbi->bfree_bitmap + i * OUICHEFS_BLOCK_SIZE,
 		       OUICHEFS_BLOCK_SIZE);
+
+		mark_buffer_dirty(bh);
+		if (wait)
+			sync_dirty_buffer(bh);
+		brelse(bh);
+	}
+
+	for (i = 0; i < sbi->nr_refcount_blocks; i++) {
+		int idx = sbi->nr_istore_blocks + sbi->nr_ifree_blocks + sbi-> nr_bfree_blocks + i + 1;
+
+		bh = sb_bread(sb, idx);
+		if (!bh){
+			pr_warn("Error reading refcount block");
+			return -EIO;
+		}
+
+		memcpy(bh->b_data,
+				(void *)sbi->b_refcount + i * OUICHEFS_BLOCK_SIZE,
+				OUICHEFS_BLOCK_SIZE);
 
 		mark_buffer_dirty(bh);
 		if (wait)
@@ -236,6 +257,7 @@ int ouichefs_fill_super(struct super_block *sb, void *data, int silent)
 	sbi->nr_bfree_blocks = csb->nr_bfree_blocks;
 	sbi->nr_free_inodes = csb->nr_free_inodes;
 	sbi->nr_free_blocks = csb->nr_free_blocks;
+	sbi->nr_refcount_blocks = csb->nr_refcount_blocks;
 	sb->s_fs_info = sbi;
 
 	brelse(bh);
@@ -284,11 +306,32 @@ int ouichefs_fill_super(struct super_block *sb, void *data, int silent)
 		brelse(bh);
 	}
 
+	sbi->b_refcount = kzalloc(sbi->nr_refcount_blocks * OUICHEFS_BLOCK_SIZE,
+				    GFP_KERNEL);
+	if (!sbi->b_refcount) {
+		ret = -ENOMEM;
+		goto free_bfree;
+	}
+	for (i = 0; i < sbi->nr_bfree_blocks; i++) {
+		int idx = sbi->nr_istore_blocks + sbi->nr_ifree_blocks + sbi->nr_refcount_blocks + i + 1;
+
+		bh = sb_bread(sb, idx);
+		if (!bh) {
+			ret = -EIO;
+			goto free_bref;
+		}
+
+		memcpy((void *)sbi->b_refcount + i * OUICHEFS_BLOCK_SIZE,
+		       bh->b_data, OUICHEFS_BLOCK_SIZE);
+
+		brelse(bh);
+	}
+
 	/* Create root inode */
 	root_inode = ouichefs_iget(sb, 0);
 	if (IS_ERR(root_inode)) {
 		ret = PTR_ERR(root_inode);
-		goto free_bfree;
+		goto free_bref;
 	}
 	inode_init_owner(root_inode, NULL, root_inode->i_mode);
 	sb->s_root = d_make_root(root_inode);
@@ -301,6 +344,8 @@ int ouichefs_fill_super(struct super_block *sb, void *data, int silent)
 
 iput:
 	iput(root_inode);
+free_bref:
+	kfree(sbi->b_refcount);
 free_bfree:
 	kfree(sbi->bfree_bitmap);
 free_ifree:

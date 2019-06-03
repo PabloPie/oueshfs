@@ -4,6 +4,7 @@
  *
  * Copyright (C) 2018 Redha Gouicem <redha.gouicem@lip6.fr>
  */
+
 #ifndef _OUICHEFS_H
 #define _OUICHEFS_H
 
@@ -69,8 +70,12 @@ struct ouichefs_sb_info {
 	uint32_t nr_free_inodes;  /* Number of free inodes */
 	uint32_t nr_free_blocks;  /* Number of free blocks */
 
+	uint32_t nr_refcount_blocks;
+
 	unsigned long *ifree_bitmap; /* In-memory free inodes bitmap */
 	unsigned long *bfree_bitmap; /* In-memory free blocks bitmap */
+
+	u8* b_refcount; /* In-memory block refcounts */
 };
 
 struct ouichefs_file_index_block {
@@ -99,6 +104,7 @@ struct rbt_node {
       struct rb_node node;
       struct hash_sha256 hash;
       u32 blockid;
+
 };
 extern int hb_insert(struct rb_root* tree, struct rbt_node *data);
 extern struct rbt_node* hb_search(struct rb_root* tree, struct hash_sha256* hash);
