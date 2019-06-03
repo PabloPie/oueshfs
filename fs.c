@@ -39,7 +39,6 @@ void ouichefs_kill_sb(struct super_block *sb)
 	// do not dedup if there was an error on mount
 	if(!IS_ERR(sb->s_bdev)) {
 		dedup_umount(sb);
-		hb_free();
 	}
 	else
 		pr_info("No dedup\n");

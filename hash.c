@@ -13,14 +13,13 @@ struct sdesc {
     char ctx[];
 };
 
-static char* hash_algo_name = "sha256";
 static unsigned hash_algo_size;
 static struct sdesc* hash_sdesc = NULL;
 static struct crypto_shash *hash_algo = NULL;
 
 int hash_init(void)
 {
-	hash_algo = crypto_alloc_shash(hash_algo_name, 0, 0);
+	hash_algo = crypto_alloc_shash("sha256", 0, 0);
 	if (IS_ERR(hash_algo)) {
 		return PTR_ERR(hash_algo);
 	}
@@ -31,13 +30,6 @@ int hash_init(void)
 		return -ENOMEM;
 	hash_sdesc->shash.tfm = hash_algo;
 	hash_sdesc->shash.flags = 0x0;
-	
-	/*struct hash_sha256 test;
-	char str[65];
-	hash_compute_sha256("pablo", 5, &test);
-	pr_info("%x%x%x%x%x%x%x%x\n", test.p[0], test.p[1], test.p[2], test.p[3], test.p[4], test.p[5], test.p[6], test.p[7]);
-	hash_sha256_to_string(str,&test,64);
-	pr_info("%s\n", str);*/
 
 	return 0;
 }
@@ -54,7 +46,7 @@ void hash_exit(void)
 	}
 }
 
-int hash_compute_sha256(const char *data, unsigned int datalen, struct hash_sha256* hash)
+int hash_compute(const char *data, unsigned int datalen, struct hash_sha256* hash)
 {
 	unsigned char digest[32];
 	int ret = crypto_shash_digest(&hash_sdesc->shash, data, datalen, digest);
@@ -81,7 +73,8 @@ int hash_compute_sha256(const char *data, unsigned int datalen, struct hash_sha2
 	return ret;
 }
 
-int hash_sha256_cmp(struct hash_sha256* h1, struct hash_sha256* h2)
+/* Compares two sha256 hashs */
+int hash_cmp(struct hash_sha256* h1, struct hash_sha256* h2)
 {
 	int i;
 	for(i=0;i<8;i++) {
@@ -93,7 +86,10 @@ int hash_sha256_cmp(struct hash_sha256* h1, struct hash_sha256* h2)
 	return 0;
 }
 
-void hash_sha256_to_string(unsigned char* dest, struct hash_sha256* hash, unsigned hsize)
+/* Writes hash in string format into buffer dest 
+ * hsize is the size of the given buffer
+*/
+void hash_to_string(unsigned char* dest, struct hash_sha256* hash, unsigned hsize)
 {
 	scnprintf(dest, hsize + 1, "%x%x%x%x%x%x%x%x\n", 
 				hash->p[0], hash->p[1], hash->p[2], hash->p[3], 

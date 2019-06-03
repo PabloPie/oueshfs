@@ -90,9 +90,9 @@ struct hash_sha256 {
 };
 extern int hash_init(void);
 extern void hash_exit(void);
-extern int hash_compute_sha256(const char *data, unsigned int datalen, struct hash_sha256* hash);
-extern int hash_sha256_cmp(struct hash_sha256* h1, struct hash_sha256* h2);
-extern void hash_sha256_to_string(unsigned char* dest, struct hash_sha256* hash, unsigned hsize);
+extern int hash_compute(const char *data, unsigned int datalen, struct hash_sha256* hash);
+extern int hash_cmp(struct hash_sha256* h1, struct hash_sha256* h2);
+extern void hash_to_string(unsigned char* dest, struct hash_sha256* hash, unsigned hsize);
 
 /* black red tree */
 struct rbt_node {
@@ -100,9 +100,9 @@ struct rbt_node {
       struct hash_sha256 hash;
       u32 blockid;
 };
-extern int hb_insert(struct rbt_node *data);
-extern struct rbt_node* hb_search(struct hash_sha256* hash);
-extern void hb_free(void);
+extern int hb_insert(struct rb_root* tree, struct rbt_node *data);
+extern struct rbt_node* hb_search(struct rb_root* tree, struct hash_sha256* hash);
+extern void hb_free(struct rb_root* tree);
 
 /* dedup functions */
 void dedup_umount(struct super_block* sb);

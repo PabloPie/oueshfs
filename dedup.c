@@ -18,9 +18,17 @@ void dedup_umount(struct super_block* sb) {
 	struct buffer_head* bh_block;
 	struct ouichefs_file_index_block *index;
 	int i;
-	
+
+	struct rb_root* tree;
 	struct rbt_node* tree_node_new;
 	struct rbt_node* tree_node_found;
+
+	tree = kmalloc(sizeof(struct rb_root), GFP_KERNEL);
+	if(!tree) {
+		pr_warn("[ouichefs] Error on tree creation, dedup aborted !\n");
+		return;	
+	}
+	*tree = RB_ROOT;	
 	
 	if (!sb || IS_ERR(sb)) {
 		pr_info("Superblock not found ! Dedup cancelled\n");
@@ -42,14 +50,14 @@ void dedup_umount(struct super_block* sb) {
 
 		file_inode = ouichefs_iget(sb, bit);
 		if (IS_ERR(file_inode)) {
-			pr_info("[dedup] Error on inode read for inode %d.\n", bit);
+			pr_info("[ouichefs] Error on inode read for inode %d.\n", bit);
 			continue;
 		}
 
 		inode_info = (struct ouichefs_inode_info*)OUICHEFS_INODE(file_inode);
 		bh_index = sb_bread(sb, inode_info->index_block);
 		if (IS_ERR(bh_index)) {
-			pr_info("[dedup] Error on index_block read for inode %d.\n", bit);
+			pr_info("[ouichefs] Error on index_block read for inode %d.\n", bit);
 			continue;
 		}
 
@@ -63,42 +71,39 @@ void dedup_umount(struct super_block* sb) {
 			
 			bh_block = sb_bread(sb, index->blocks[i]);
 			if (IS_ERR(bh_block)) {
-				pr_info("[dedup] Error reading block %d.\n", index->blocks[i]);
+				pr_info("[ouichefs] Error reading block %d.\n", index->blocks[i]);
 				continue;
 			}
-			
-			
-			
+
 			// Compute block's hash
 			tree_node_new = kmalloc(sizeof(struct rbt_node), GFP_KERNEL);
 			if(!tree_node_new) {
-				pr_info("[dedup] No memory\n");
+				pr_info("[ouichefs] No memory\n");
 				brelse(bh_block);// à revoir
 				return;
 			}
 			
 			tree_node_new->blockid = index->blocks[i];
 
-			// les blocs sont zeroed, pas besoin de prendre la size dans l'inode
-			hash_compute_sha256(bh_block->b_data, OUICHEFS_BLOCK_SIZE, &tree_node_new->hash);
+			// Compute the hash of the block
+			hash_compute(bh_block->b_data, OUICHEFS_BLOCK_SIZE, &tree_node_new->hash);
 
-			// Search in tree
-			// implement insertion if value doesnt exist?
-			tree_node_found = hb_search(&tree_node_new->hash);
+			tree_node_found = hb_search(tree, &tree_node_new->hash);
 			if(tree_node_found) {
 				if(tree_node_found->blockid == tree_node_new->blockid){
 					goto relse_blk;
 				}
-
-				pr_info("[dedup] bloc found %d new=%d\n", tree_node_found->blockid, tree_node_new->blockid);
-				kfree(tree_node_new);
 				put_block(sb_info,index->blocks[i]);
 				index->blocks[i] = tree_node_found->blockid;
-				pr_info("[] maj %d",index->blocks[i]);
 				mark_buffer_dirty(bh_index);
+
+				//sb_info->bref_count[tree_node_found->blockid] = ((u8)(sb_info->bref_count[tree_node_found->blockid]))+1;
+
+				pr_info("[ouichefs] bloc dedup old=%d new=%d\n", tree_node_found->blockid, tree_node_new->blockid);
+				kfree(tree_node_new);
 			} else {
-				hb_insert(tree_node_new);
-				pr_info("[dedup] bloc added %d\n", tree_node_new->blockid);
+				hb_insert(tree, tree_node_new);
+				pr_info("[ouichefs] bloc %d added into hash tree\n", tree_node_new->blockid);
 			}
 			
 		relse_blk:
@@ -108,4 +113,6 @@ void dedup_umount(struct super_block* sb) {
 		brelse(bh_index);
 		iput(file_inode);
 	}
+
+	hb_free(tree);
 }

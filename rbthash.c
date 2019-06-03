@@ -6,17 +6,15 @@
 #include <linux/slab.h>
 #include "ouichefs.h"
 
-static struct rb_root rbtree = RB_ROOT;
-
-struct rbt_node* hb_search(struct hash_sha256* hash)
+struct rbt_node* hb_search(struct rb_root* tree, struct hash_sha256* hash)
 {
 	struct rbt_node* data;
-	struct rb_node* node = rbtree.rb_node;
+	struct rb_node* node = tree->rb_node;
 	while (node) {
 		// container_of : ptr, type, member
 		data = container_of(node, struct rbt_node, node);
 
-		switch(hash_sha256_cmp(hash,&data->hash)) {
+		switch(hash_cmp(hash,&data->hash)) {
 			case -1 :
 				node = node->rb_left;
 				break;
@@ -30,14 +28,14 @@ struct rbt_node* hb_search(struct hash_sha256* hash)
 	return NULL;
 }
 
-int hb_insert(struct rbt_node *data)
+int hb_insert(struct rb_root* tree, struct rbt_node *data)
 {
-	struct rb_node** new = &(rbtree.rb_node);
+	struct rb_node** new = &(tree->rb_node);
 	struct rb_node* parent = NULL;
 
 	while (*new) {
 		struct rbt_node *this = container_of(*new, struct rbt_node, node);
-		switch(hash_sha256_cmp(&data->hash,&this->hash)) {
+		switch(hash_cmp(&data->hash,&this->hash)) {
 			case -1 :
 				new = &((*new)->rb_left);
 				break;
@@ -50,16 +48,17 @@ int hb_insert(struct rbt_node *data)
 	}
 
 	rb_link_node(&data->node, parent, new);
-	rb_insert_color(&data->node, &rbtree);
+	rb_insert_color(&data->node, tree);
 	return 1;
 }
 
-void hb_free(void)
+void hb_free(struct rb_root* tree)
 {
 	struct rbt_node* pos;
 	struct rbt_node* n;
-	rbtree_postorder_for_each_entry_safe(pos, n, &rbtree, node) {
+	rbtree_postorder_for_each_entry_safe(pos, n, tree, node) {
+		rb_erase(&pos->node, tree);
 		kfree(pos);
 	}
-	rbtree = RB_ROOT;
+	kfree(tree);
 }
