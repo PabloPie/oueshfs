@@ -77,7 +77,6 @@ int hash_compute_sha256(const char *data, unsigned int datalen, struct hash_sha2
 				| (digest[26] << 8) | (digest[27]);
 	hash->p[7] = (digest[28] << 24) | (digest[29] << 16) 
 				| (digest[30] << 8) | (digest[31]);
-
 	end:
 	return ret;
 }

@@ -32,6 +32,11 @@ void dedup_umount(struct super_block* sb) {
 		pr_info("Superblock Info not found (fs broken ?) ! Dedup cancelled\n");
 		return;
 	}
+
+	if(sync_filesystem(sb)<0) {
+		pr_warn("[ouichefs] Error on sync_fs happened, dedup aborted !\n");
+		return;
+	}
 	
 	for_each_clear_bit(bit, sb_info->ifree_bitmap, sb_info->nr_inodes) {
 
@@ -50,7 +55,7 @@ void dedup_umount(struct super_block* sb) {
 
 		index = (struct ouichefs_file_index_block *)bh_index->b_data;
 
-		for(i=0; i < file_inode->i_blocks-1 ; i++) {
+		for(i=0; i < file_inode->i_blocks ; i++) {
 			
 			if(index->blocks[i]==0) {
 				continue;
@@ -73,12 +78,12 @@ void dedup_umount(struct super_block* sb) {
 			}
 			
 			tree_node_new->blockid = index->blocks[i];
-			
+
 			// les blocs sont zeroed, pas besoin de prendre la size dans l'inode
 			hash_compute_sha256(bh_block->b_data, OUICHEFS_BLOCK_SIZE, &tree_node_new->hash);
 
-			// Search in tree (+ faire insert_if_not_exist)
-			
+			// Search in tree
+			// implement insertion if value doesnt exist?
 			tree_node_found = hb_search(&tree_node_new->hash);
 			if(tree_node_found) {
 				if(tree_node_found->blockid == tree_node_new->blockid){
@@ -95,7 +100,8 @@ void dedup_umount(struct super_block* sb) {
 				hb_insert(tree_node_new);
 				pr_info("[dedup] bloc added %d\n", tree_node_new->blockid);
 			}
-			relse_blk:
+			
+		relse_blk:
 			brelse(bh_block);
 		}
 
