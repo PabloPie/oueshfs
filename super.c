@@ -169,10 +169,11 @@ static int ouichefs_sync_fs(struct super_block *sb, int wait)
 	}
 
 	for (i = 0; i < sbi->nr_refcount_blocks; i++) {
-		int idx = sbi->nr_istore_blocks + sbi->nr_ifree_blocks + sbi-> nr_bfree_blocks + i + 1;
+		int idx = sbi->nr_istore_blocks + sbi->nr_ifree_blocks
+				+ sbi->nr_bfree_blocks + i + 1;
 
 		bh = sb_bread(sb, idx);
-		if (!bh){
+		if (!bh) {
 			pr_warn("Error reading refcount block");
 			return -EIO;
 		}

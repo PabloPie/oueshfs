@@ -101,8 +101,10 @@ static int ouichefs_write_begin(struct file *file,
 	struct inode *inode = file->f_inode;
 	struct super_block *sb = inode->i_sb;
 	struct ouichefs_inode_info *ci = OUICHEFS_INODE(inode);
-	int err;
+	int err, i;
 	uint32_t nr_allocs = 0;
+	struct buffer_head *bh_index;
+	struct ouichefs_file_index_block *index;
 
 	/* Check if the write can be completed (enough space?) */
 	if (pos + len > OUICHEFS_MAX_FILESIZE)
@@ -117,16 +119,17 @@ static int ouichefs_write_begin(struct file *file,
 
 	// check refcount for each block, if brefcount[block] > 0 (0 = 1 user, 1 = 2 users, etc)
 	// allocate new block before writing and decrease refcount
-	int i = 0;
-	struct buffer_head *bh_index = sb_bread(sb, ci->index_block);
-	struct ouichefs_file_index_block *index = (struct ouichefs_file_index_block *)bh_index->b_data;
-	for(i=0; i < inode->i_blocks-1  ; i++) {
-		if(sbi->b_refcount[index->blocks[i]] > 0) {
+
+	bh_index = sb_bread(sb, ci->index_block);
+	index = (struct ouichefs_file_index_block *)bh_index->b_data;
+	for (i = 0; i < inode->i_blocks-1  ; i++) {
+		if (sbi->b_refcount[index->blocks[i]] > 0) {
 			// allocate new block and copy data inside
 			// index->blocks[i] = new block
 			// sbi->b_refcount[index->blocks[i]]--
 		}
 	}
+	brelse(bh_index);
 
 	/* prepare the write */
 	err = block_write_begin(mapping, pos, len, flags, pagep,
